@@ -1,0 +1,46 @@
+# AMD ROCm deployment for WSL2 (RDNA 4 / RX 9000-series friendly).
+#
+# Why this exists separately from compose-amd.yaml:
+#   1. WSL2 exposes the GPU through /dev/dxg, not /dev/kfd + /dev/dri.
+#   2. The default ghcr.io/.../docling-serve-rocm image is built on
+#      CentOS Stream 9 with PyTorch ROCm 6.3, which does not support
+#      gfx1201 (RX 9070 XT et al.) and whose libhsa-runtime64.so is not
+#      WSL-aware.
+#
+# Build the image first (Ubuntu 24.04 + PyTorch ROCm 6.4 base):
+#   docker build -f docs/deploy-examples/Containerfile.wsl2 -t docling-serve-rocm-wsl:local .
+#
+# Prerequisites (on the WSL distro, not Windows):
+#   - AMD's WSL ROCm packages installed (`apt install rocm`) — provides
+#     the WSL-aware libhsa-runtime64.so + librocdxg.so we bind-mount in.
+#   - `rocminfo` reports your GPU and prints "WSL environment detected".
+#
+# Refs:
+#   - https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/3rd-party/wsl/install-radeon.html
+#   - https://rocm.docs.amd.com/projects/radeon/en/latest/docs/install/wsl/install-pytorch.html
+
+services:
+  docling-serve:
+    image: docling-serve-rocm-wsl:local
+    container_name: docling-serve
+    ports:
+      - "5001:5001"
+    environment:
+      DOCLING_SERVE_ENABLE_UI: "true"
+      HSA_ENABLE_DXG_DETECTION: "1"
+      LD_LIBRARY_PATH: "/usr/lib/wsl/lib:/opt/rocm/lib"
+    devices:
+      - /dev/dxg:/dev/dxg
+    volumes:
+      # Microsoft's WSL GPU runtime (libdxcore.so, libd3d12*.so).
+      - /usr/lib/wsl:/usr/lib/wsl:ro
+      # Overlay the host's WSL-aware ROCm runtime over the container's
+      # /opt/rocm. The host paths below are stable symlinks managed by
+      # the `rocm` apt package; Docker resolves them at mount time, so
+      # this works regardless of the host's ROCm minor version.
+      - /opt/rocm/lib/libhsa-runtime64.so:/opt/rocm/lib/libhsa-runtime64.so:ro
+      - /opt/rocm/lib/libhsa-runtime64.so:/opt/rocm/lib/libhsa-runtime64.so.1:ro
+      - /opt/rocm/lib/libhsa-runtime64.so:/opt/rocm/lib/libhsa-runtime64.so.1.15.60400:ro
+      - /opt/rocm/lib/librocdxg.so:/opt/rocm/lib/librocdxg.so:ro
+      - /opt/rocm/lib/librocdxg.so:/opt/rocm/lib/librocdxg.so.1:ro
+    restart: always

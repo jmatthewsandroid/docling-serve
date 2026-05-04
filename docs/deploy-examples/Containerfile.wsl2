@@ -1,0 +1,32 @@
+# WSL2 + ROCm 6.4 build of docling-serve.
+#
+# The default `make docling-serve-rocm-image` produces a CentOS Stream 9
+# image pinned to PyTorch ROCm 6.3, which does NOT support gfx1201
+# (RX 9000-series / RDNA 4). This image layers docling-serve onto AMD's
+# rocm/pytorch:6.4 image (Ubuntu 24.04 + PyTorch 2.6 + ROCm 6.4) so that
+# RDNA 4 GPUs are detected natively.
+#
+# At runtime, the host's WSL-aware libhsa-runtime64.so + librocdxg.so
+# must be bind-mounted over /opt/rocm/lib/ — see compose-amd-wsl.yaml.
+
+FROM rocm/pytorch:rocm6.4_ubuntu24.04_py3.12_pytorch_release_2.6.0
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    HSA_ENABLE_DXG_DETECTION=1 \
+    LD_LIBRARY_PATH=/usr/lib/wsl/lib:/opt/rocm/lib \
+    DOCLING_SERVE_ENABLE_UI=true
+
+# Pin torch/torchvision/triton from the base image so pip cannot replace
+# them with PyPI CPU wheels while resolving docling-serve's deps.
+RUN pip freeze 2>/dev/null \
+    | grep -iE '^(torch|torchvision|pytorch-triton-rocm)==' \
+    > /tmp/torch-constraints.txt \
+ && cat /tmp/torch-constraints.txt
+
+RUN pip install --no-cache-dir \
+    --constraint /tmp/torch-constraints.txt \
+    "docling-serve[ui]==1.17.0"
+
+EXPOSE 5001
+
+CMD ["docling-serve", "run", "--host", "0.0.0.0", "--port", "5001"]

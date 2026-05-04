@@ -5,7 +5,7 @@ This document provides deployment examples for running the application in differ
 Choose the deployment option that best fits your setup.
 
 - **[Local GPU NVIDIA](#local-gpu-nvidia)**: For deploying the application locally on a machine with a supported NVIDIA GPU (using Docker Compose).
-- **[Local GPU AMD](#local-gpu-amd)**: For deploying the application locally on a machine with a supported AMD GPU (using Docker Compose).
+- **[Local GPU AMD](#local-gpu-amd)**: For deploying the application locally on a machine with a supported AMD GPU (using Docker Compose). Includes a separate [WSL2 path](#wsl2-windows) for RDNA 4 / RX 9000-series cards.
 - **[OpenShift](#openshift)**: For deploying the application on an OpenShift cluster, designed for cloud-native environments.
 
 ---
@@ -187,6 +187,58 @@ Docs:
 
     ```sh
     make docling-serve-rocm-image
+    ```
+
+</details>
+
+### WSL2 (Windows)
+
+The default ROCm image won't work in WSL2: it's pinned to PyTorch ROCm 6.3
+(no support for gfx1201 / RX 9000-series RDNA 4) and its `libhsa-runtime64.so`
+isn't WSL-aware. WSL2 also exposes the GPU through `/dev/dxg` instead of the
+native `/dev/kfd` + `/dev/dri`. Use the dedicated WSL2 manifest:
+[compose-amd-wsl.yaml](./deploy-examples/compose-amd-wsl.yaml) +
+[Containerfile.wsl2](./deploy-examples/Containerfile.wsl2) (layered on
+`rocm/pytorch:rocm6.4_ubuntu24.04_py3.12_pytorch_release_2.6.0`).
+
+<details>
+<summary><b>Requirements</b></summary>
+
+- Windows 11 with WSL2 + an Ubuntu 22.04/24.04 distro
+- AMD's WSL ROCm packages installed inside the WSL distro (`apt install rocm`)
+- Docker Desktop or a Linux Docker engine accessible from the WSL distro
+- `rocminfo` reports your GPU and prints `WSL environment detected`
+
+</details>
+
+<details>
+<summary><b>Steps</b></summary>
+
+1. Confirm the WSL-aware ROCm runtime libraries are present on the host —
+   `compose-amd-wsl.yaml` bind-mounts them over the container's `/opt/rocm/lib`
+   via the apt package's stable `/opt/rocm/lib/...` symlinks:
+
+    ```sh
+    ls -L /opt/rocm/lib/libhsa-runtime64.so /opt/rocm/lib/librocdxg.so
+    ```
+
+2. Build the WSL2 image:
+
+    ```sh
+    docker build -f docs/deploy-examples/Containerfile.wsl2 -t docling-serve-rocm-wsl:local .
+    ```
+
+3. Run it:
+
+    ```sh
+    docker compose -f docs/deploy-examples/compose-amd-wsl.yaml up -d
+    ```
+
+4. Verify the GPU is visible to PyTorch inside the container:
+
+    ```sh
+    docker exec docling-serve python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+    # True AMD Radeon RX 9070 XT
     ```
 
 </details>
