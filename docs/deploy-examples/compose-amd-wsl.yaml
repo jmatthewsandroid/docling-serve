@@ -19,6 +19,8 @@
 #   - https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/3rd-party/wsl/install-radeon.html
 #   - https://rocm.docs.amd.com/projects/radeon/en/latest/docs/install/wsl/install-pytorch.html
 
+name: docling-serve-wsl
+
 services:
   docling-serve:
     image: docling-serve-rocm-wsl:local
